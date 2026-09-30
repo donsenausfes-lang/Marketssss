@@ -571,4 +571,242 @@
     closeProduct();
   }
 
-  f
+    renderSection("eng", "grid-eng");
+  renderSection("gifts", "grid-gifts");
+}
+
+function renderGrid() {
+  renderSection("eng", "grid-eng");
+  renderSection("gifts", "grid-gifts");
+}
+
+function openProduct(id) {
+  const p = products.find(x => x.id === id);
+  if (!p) return;
+  currentProductId = id;
+  selectedOptionIdx = 0;
+
+  document.getElementById("pBigImg").src = p.image;
+  document.getElementById("pName").textContent = p.name;
+  document.getElementById("pDesc").textContent = p.description;
+
+  const block = document.getElementById("pPriceBlock");
+
+  if (p.priceOptions && p.priceOptions.length) {
+    block.innerHTML = `
+      <div class="price-options" id="priceOptions">
+        ${p.priceOptions.map((o, idx) => `
+          <div class="price-option ${idx === 0 ? "selected" : ""}"
+               onclick="selectOption(${idx})">
+            <span class="label">${o.label}</span>
+            <span class="value">${o.value} ⭐</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  } else {
+    block.innerHTML = `<p class="product-single-price">${p.price} ⭐</p>`;
+  }
+
+  const btn = document.getElementById("pAddBtn");
+  const inCart = getItem(id);
+  if (inCart && !p.allowMultiple) {
+    btn.disabled = true;
+    btn.textContent = "Уже в корзине";
+  } else {
+    btn.disabled = false;
+    btn.textContent = "В корзину";
+  }
+
+  document.getElementById("cartView").style.display = "none";
+  document.getElementById("checkoutView").style.display = "none";
+  document.getElementById("productView").style.display = "block";
+  document.getElementById("overlay").classList.add("open");
+}
+ function selectOption(idx) {
+  selectedOptionIdx = idx;
+  document.querySelectorAll(".price-option").forEach((el, i) => {
+    el.classList.toggle("selected", i === idx);
+  });
+}
+
+function closeProduct() {
+  if (cart.length > 0) {
+    openCart();
+  } else {
+    document.getElementById("overlay").classList.remove("open");
+  }
+}
+
+function addFromProductView() {
+  const p = products.find(x => x.id === currentProductId);
+  if (!p) return;
+
+  let finalPrice = p.price;
+  let optionLabel = null;
+
+  if (p.priceOptions && p.priceOptions.length) {
+    const opt = p.priceOptions[selectedOptionIdx];
+    finalPrice = opt.value;
+    optionLabel = opt.label;
+  }
+
+  const existing = getItem(p.id);
+  if (existing) {
+    if (!p.allowMultiple) return;
+    existing.qty += 1;
+  } else {
+    cart.push({ product: p, qty: 1, chosenPrice: finalPrice, optionLabel });
+  }
+
+  renderGrid();
+  renderCart();
+  closeProduct();
+}
+
+function addToCart(id) {
+  const p = products.find(x => x.id === id);
+  const existing = getItem(id);
+  if (existing) {
+    if (!p.allowMultiple) return;
+    existing.qty += 1;
+  } else {
+    if (p.priceOptions && p.priceOptions.length) {
+      openProduct(id);
+      return;
+    }
+    cart.push({ product: p, qty: 1, chosenPrice: p.price, optionLabel: null });
+  }
+  renderGrid();
+  renderCart();
+}
+
+function increaseQty(id) {
+  const item = getItem(id);
+  if (!item || !item.product.allowMultiple) return;
+  item.qty += 1;
+  renderGrid();
+  renderCart();
+}
+
+function decreaseQty(id) {
+  const item = getItem(id);
+  if (!item) return;
+  item.qty -= 1;
+  if (item.qty <= 0) cart = cart.filter(i => i.product.id !== id);
+  renderGrid();
+  renderCart();
+}
+
+function removeFromCart(id) {
+  cart = cart.filter(i => i.product.id !== id);
+  renderGrid();
+  renderCart();
+}
+
+function linePrice(item) {
+  return (item.chosenPrice || item.product.price) * item.qty;
+}
+function baseSum() {
+  return cart.reduce((s, i) => s + linePrice(i), 0);
+}
+function commissionSum() {
+  return cart.reduce((s, i) => {
+    if (i.product.noCommission) return s;
+    return s + linePrice(i) * 0.2;
+  }, 0);
+}
+function totalSum() { return baseSum() + commissionSum(); }
+ function renderCart() {
+  document.getElementById("cartCount").textContent =
+    totalCount() > 0 ? "(" + totalCount() + ")" : "";
+  const c = document.getElementById("cartContent");
+  if (cart.length === 0) {
+    c.innerHTML = '<p class="empty">Пока пусто</p><button class="close" onclick="closeAll()">Закрыть</button>';
+    return;
+  }
+
+  let itemsHtml = cart.map(i => {
+    const unitPrice = i.chosenPrice || i.product.price;
+    const lineSum = unitPrice * i.qty;
+    const comm = i.product.noCommission ? 0 : lineSum * 0.2;
+    const commText = i.product.noCommission
+      ? "Без комиссии"
+      : "+ " + comm.toFixed(0) + " ⭐ комиссия";
+
+    const variantText = i.optionLabel ? ` (${i.optionLabel})` : "";
+
+    const qtyControls = i.product.allowMultiple ? `
+      <div class="qty-controls">
+        <button onclick="decreaseQty(${i.product.id})">−</button>
+        <span class="val">${i.qty}</span>
+        <button onclick="increaseQty(${i.product.id})">+</button>
+      </div>
+    ` : "";
+
+    return `
+    <div class="item">
+      <div class="row1">
+        <div style="flex:1">
+          <div class="name">${i.product.name}${variantText}</div>
+          <div class="line">${unitPrice} ⭐ × ${i.qty} = ${lineSum} ⭐</div>
+          <div class="line">${commText}</div>
+          ${qtyControls}
+        </div>
+        <button class="remove" onclick="removeFromCart(${i.product.id})">✕</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  const base = baseSum();
+  const comm = commissionSum();
+  const total = base + comm;
+
+  itemsHtml += `
+    <div class="totals">
+      <div class="row"><span>Товары:</span><span>${base} ⭐</span></div>
+      ${comm > 0 ? `<div class="row commission"><span>Комиссия Telegram (+20%):</span><span>+${comm.toFixed(0)} ⭐</span></div>` : ""}
+      <div class="row final"><span>Итого:</span><span>${total.toFixed(0)} ⭐</span></div>
+    </div>
+    <button class="order" onclick="showCheckout()">Оформить заказ</button>
+    <button class="close" onclick="closeAll()">Закрыть</button>
+  `;
+  c.innerHTML = itemsHtml;
+}
+
+function openCart() {
+  renderCart();
+  document.getElementById("productView").style.display = "none";
+  document.getElementById("checkoutView").style.display = "none";
+  document.getElementById("cartView").style.display = "block";
+  document.getElementById("overlay").classList.add("open");
+}
+
+function overlayClick(e) {
+  if (e.target.id !== "overlay") return;
+  closeAll();
+}
+
+function closeAll() {
+  document.getElementById("overlay").classList.remove("open");
+}
+
+function showCheckout() {
+  if (cart.length === 0) return;
+  document.getElementById("checkoutAmount").textContent = totalSum().toFixed(0);
+  document.getElementById("cartView").style.display = "none";
+  document.getElementById("productView").style.display = "none";
+  document.getElementById("checkoutView").style.display = "block";
+}
+
+function backToCart() {
+  openCart();
+}
+
+renderGrid();
+renderCart();
+</script>
+
+</body>
+</html>
+function totalCount() { return cart.reduce((s, i) => s + i.qty, 0); }
